@@ -1,0 +1,9 @@
+build/
+external/imgui/
+robotsim
+compile_commands.json
+imgui.ini
+.cache/
+.vscode/
+*.o
+*.obj
