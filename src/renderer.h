@@ -1,7 +1,13 @@
 #pragma once
-#define GL_GLEXT_PROTOTYPES
-#include <GL/gl.h>
-#include <GL/glext.h>
+#if defined(__APPLE__)
+    #define GL_SILENCE_DEPRECATION
+    #include <OpenGL/gl3.h>
+    #include <OpenGL/gl3ext.h>
+#else
+    #define GL_GLEXT_PROTOTYPES
+    #include <GL/gl.h>
+    #include <GL/glext.h>
+#endif
 #include <glm/glm.hpp>
 #include <string>
 

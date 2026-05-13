@@ -6,48 +6,77 @@ Built with SDL2 + OpenGL 3.3 core + [Dear ImGui](https://github.com/ocornut/imgu
 
 ## Requirements
 
-- Linux (tested on Ubuntu 22.04). Should be straightforward to port to macOS / Windows; only the dependency install steps would change.
-- A C++17 compiler (g++ 11+ or clang++ 14+).
+- A C++17 compiler (g++ 11+, clang++ 14+, or MSVC 2019+).
 - CMake 3.16+.
 - An OpenGL 3.3-capable GPU.
 
+Currently tested only on Linux (Ubuntu 22.04). macOS instructions below should work; Windows instructions are guidance — a GL loader needs to be wired in first, see [Windows notes](#windows).
+
 ## Setup
 
-### 1. Install system dependencies
+The first two steps are the same on every platform; only the dependency install differs.
 
-```bash
-sudo apt install -y build-essential cmake libsdl2-dev libglm-dev libgl1-mesa-dev git
-```
-
-### 2. Clone the repo
+### 1. Clone the repo
 
 ```bash
 git clone https://github.com/Mandelbrot314159/robotsim.git
 cd robotsim
 ```
 
-### 3. Fetch Dear ImGui
-
-ImGui is not vendored in this repo; clone it into `external/imgui/`:
+### 2. Fetch Dear ImGui
 
 ```bash
 git clone --depth 1 -b docking https://github.com/ocornut/imgui.git external/imgui
 ```
 
-### 4. Configure and build
+### 3. Install dependencies (pick your platform)
+
+#### Linux (Ubuntu / Debian)
+
+```bash
+sudo apt install -y build-essential cmake libsdl2-dev libglm-dev libgl1-mesa-dev git
+```
+
+For Fedora / Arch, install the equivalent packages: a C++ compiler, `cmake`, SDL2 dev headers, GLM, and OpenGL/Mesa dev headers.
+
+#### macOS
+
+You need the Xcode Command Line Tools and Homebrew:
+
+```bash
+xcode-select --install
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew install cmake sdl2 glm
+```
+
+OpenGL is part of the macOS system framework — nothing else to install. (Note: Apple has deprecated OpenGL in favor of Metal; it still works through at least macOS 14, and the code includes `GL_SILENCE_DEPRECATION` to quiet the warnings.)
+
+#### Windows
+
+**Status: not yet supported out of the box.** Windows' `opengl32.dll` only exports OpenGL 1.1 functions, so the project as-written won't link. To get it working you'd need to add a GL loader (e.g. [glad](https://gen.glad.sh/), [glew](https://glew.sourceforge.net/)) and swap the platform conditional in [src/renderer.h](src/renderer.h) and [src/main.cpp](src/main.cpp) to include the loader's header instead. PRs welcome.
+
+If you want to give it a shot anyway:
+
+- Install [Visual Studio 2022](https://visualstudio.microsoft.com/) with the "Desktop development with C++" workload (includes MSVC and CMake), **or** install [MSYS2](https://www.msys2.org/) and use the MinGW-w64 toolchain.
+- Install [vcpkg](https://vcpkg.io/en/) and run `vcpkg install sdl2 glm glad` (note: `glad` for the loader you'd add).
+- Wire up glad in the renderer (see above), then configure with `cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<vcpkg root>/scripts/buildsystems/vcpkg.cmake`.
+
+### 4. Configure and build (all platforms)
 
 ```bash
 cmake -S . -B build
-cmake --build build -j$(nproc)
+cmake --build build -j
 ```
 
-The resulting `robotsim` binary is placed in the project root.
+The resulting binary is placed at the project root: `robotsim` on Linux/macOS, `robotsim.exe` on Windows.
 
 ## Run
 
 ```bash
 ./robotsim
 ```
+
+(Or `.\robotsim.exe` on Windows.)
 
 ## Controls
 
@@ -76,11 +105,12 @@ src/
   renderer.{h,cpp}      Minimal GL renderer (cube mesh, grid)
   keyframes.{h,cpp}     Keyframe storage + smoothstep interpolation
   ui.{h,cpp}            ImGui panels (sliders, keyframe list)
-external/imgui/         Dear ImGui (not checked in — see Setup step 3)
+external/imgui/         Dear ImGui (not checked in — see Setup step 2)
 ```
 
 The arm definition (joint axes, link lengths, and joint limits) lives in `src/arm.cpp`. Tweak the `joints_[i] = { axis, length, lower, upper }` lines to change the geometry.
 
 ## Notes
 
-- This project uses Mesa's `libGL.so` directly with `GL_GLEXT_PROTOTYPES` — no GL loader (glad / glew / epoxy) is required on Linux. If you port to a system where `libGL` doesn't export GL 3.3+ functions, add a loader.
+- **OpenGL loading.** On Linux this project links Mesa's `libGL.so` directly with `GL_GLEXT_PROTOTYPES`, which exports all GL 3.3+ functions natively — no loader needed. On macOS it includes `<OpenGL/gl3.h>` from Apple's OpenGL framework. On Windows you'd need a loader (see [Windows notes](#windows)).
+- **No pre-built binaries.** Source builds only. If you want to share a binary with someone, build it on a machine matching their OS.

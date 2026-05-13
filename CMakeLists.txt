@@ -12,8 +12,16 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+# Prefer SDL2's own CMake config (Homebrew on macOS, vcpkg on Windows).
+# Fall back to pkg-config (typical on Linux distros).
+find_package(SDL2 CONFIG QUIET)
+if(SDL2_FOUND)
+  set(SDL2_LINK_TARGET SDL2::SDL2)
+else()
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+  set(SDL2_LINK_TARGET ${SDL2_LINK_TARGET})
+endif()
 find_package(OpenGL REQUIRED)
 
 # glm is header-only; libglm-dev ships a cmake config that requires very old CMake,
@@ -31,7 +39,7 @@ add_library(imgui STATIC
   ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
 )
 target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
-target_link_libraries(imgui PUBLIC PkgConfig::SDL2)
+target_link_libraries(imgui PUBLIC ${SDL2_LINK_TARGET})
 
 add_executable(robotsim
   src/main.cpp
@@ -45,7 +53,7 @@ target_include_directories(robotsim PRIVATE src)
 target_compile_options(robotsim PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(robotsim PRIVATE
   imgui
-  PkgConfig::SDL2
+  ${SDL2_LINK_TARGET}
   OpenGL::GL
 )
 target_include_directories(robotsim PRIVATE ${GLM_INCLUDE_DIR})
