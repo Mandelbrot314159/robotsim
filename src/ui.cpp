@@ -58,9 +58,13 @@ void drawUI(UIState& ui, Arm& arm, KeyframeSequence& seq) {
 
     if (ImGui::BeginListBox("##frames", ImVec2(-FLT_MIN, 6 * ImGui::GetTextLineHeightWithSpacing()))) {
         for (int i = 0; i < (int)seq.frames.size(); ++i) {
+            bool isLast = (i == (int)seq.frames.size() - 1);
+            const char* dest = (isLast && seq.looping) ? "loop"
+                             : (isLast)                ? "unused"
+                                                       : "next";
             char label[80];
-            std::snprintf(label, sizeof(label), "Frame %d   (%.2fs to next)",
-                          i, seq.frames[i].duration_to_next);
+            std::snprintf(label, sizeof(label), "Frame %d   (%.2fs to %s)",
+                          i, seq.frames[i].duration_to_next, dest);
             if (ImGui::Selectable(label, ui.selectedFrame == i)) {
                 ui.selectedFrame = i;
             }
@@ -70,7 +74,11 @@ void drawUI(UIState& ui, Arm& arm, KeyframeSequence& seq) {
 
     if (ui.selectedFrame >= 0 && ui.selectedFrame < (int)seq.frames.size()) {
         auto& f = seq.frames[ui.selectedFrame];
-        ImGui::SliderFloat("duration to next (s)", &f.duration_to_next, 0.05f, 10.0f, "%.2fs");
+        bool isLast = (ui.selectedFrame == (int)seq.frames.size() - 1);
+        const char* slider_label = (isLast && seq.looping) ? "duration to loop (s)"
+                                 : (isLast)                ? "duration (unused, enable Loop)"
+                                                           : "duration to next (s)";
+        ImGui::SliderFloat(slider_label, &f.duration_to_next, 0.05f, 10.0f, "%.2fs");
         if (ImGui::Button("Load into sliders")) arm.setAngles(f.angles);
         ImGui::SameLine();
         if (ImGui::Button("Overwrite from current")) f.angles = arm.getAngles();
