@@ -45,6 +45,7 @@ add_executable(robotsim
   src/main.cpp
   src/arm.cpp
   src/camera.cpp
+  src/ik.cpp
   src/keyframes.cpp
   src/renderer.cpp
   src/ui.cpp

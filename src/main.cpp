@@ -19,7 +19,9 @@
 
 #include "arm.h"
 #include "camera.h"
+#include "ik.h"
 #include "keyframes.h"
+#include "picking.h"
 #include "renderer.h"
 #include "ui.h"
 
@@ -88,12 +90,25 @@ int main(int, char**) {
         {0.70f, 0.40f, 0.85f},
     };
 
+    IKConfig ik_cfg;
+    const float kTargetPickRadius = 0.10f;  // generous grab radius for the IK target handle
+
     auto t_prev = std::chrono::steady_clock::now();
     bool running = true;
-    bool dragging_orbit = false;
-    bool dragging_pan   = false;
+    bool dragging_orbit  = false;
+    bool dragging_pan    = false;
+    bool dragging_target = false;
+    Mode prev_mode = ui.mode;
 
     while (running) {
+        int w, h;
+        SDL_GL_GetDrawableSize(win, &w, &h);
+        float aspect = h > 0 ? (float)w / (float)h : 1.0f;
+        int win_w, win_h;
+        SDL_GetWindowSize(win, &win_w, &win_h);  // logical size: mouse coords live here
+        glm::mat4 view = cam.view();
+        glm::mat4 proj = cam.projection(aspect);
+
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             ImGui_ImplSDL2_ProcessEvent(&ev);
@@ -102,24 +117,52 @@ int main(int, char**) {
             if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE) running = false;
 
             if (io.WantCaptureMouse) {
-                dragging_orbit = false;
-                dragging_pan   = false;
+                dragging_orbit  = false;
+                dragging_pan    = false;
+                dragging_target = false;
                 continue;
             }
 
             if (ev.type == SDL_MOUSEBUTTONDOWN) {
-                if (ev.button.button == SDL_BUTTON_LEFT)   dragging_orbit = true;
-                if (ev.button.button == SDL_BUTTON_RIGHT)  dragging_pan   = true;
-                if (ev.button.button == SDL_BUTTON_MIDDLE) dragging_pan   = true;
+                if (ev.button.button == SDL_BUTTON_LEFT) {
+                    // In IK mode, a left click on the target handle grabs it;
+                    // otherwise the left button orbits the camera as usual.
+                    bool grabbed = false;
+                    if (ui.mode == Mode::IK) {
+                        Ray r = screenRay((float)ev.button.x, (float)ev.button.y,
+                                          (float)win_w, (float)win_h, view, proj);
+                        float t;
+                        if (raySphere(r, ui.ikTarget, kTargetPickRadius, t)) {
+                            dragging_target = true;
+                            grabbed = true;
+                        }
+                    }
+                    if (!grabbed) dragging_orbit = true;
+                }
+                if (ev.button.button == SDL_BUTTON_RIGHT)  dragging_pan = true;
+                if (ev.button.button == SDL_BUTTON_MIDDLE) dragging_pan = true;
             }
             if (ev.type == SDL_MOUSEBUTTONUP) {
-                if (ev.button.button == SDL_BUTTON_LEFT)   dragging_orbit = false;
-                if (ev.button.button == SDL_BUTTON_RIGHT)  dragging_pan   = false;
-                if (ev.button.button == SDL_BUTTON_MIDDLE) dragging_pan   = false;
+                if (ev.button.button == SDL_BUTTON_LEFT) {
+                    dragging_orbit  = false;
+                    dragging_target = false;
+                }
+                if (ev.button.button == SDL_BUTTON_RIGHT)  dragging_pan = false;
+                if (ev.button.button == SDL_BUTTON_MIDDLE) dragging_pan = false;
             }
             if (ev.type == SDL_MOUSEMOTION) {
-                if (dragging_orbit) cam.orbit((float)ev.motion.xrel, (float)ev.motion.yrel);
-                if (dragging_pan)   cam.pan  ((float)ev.motion.xrel, (float)ev.motion.yrel);
+                if (dragging_target && ui.mode == Mode::IK) {
+                    // Slide the target on a camera-facing plane through its current
+                    // position, so mouse motion maps to intuitive screen-space motion.
+                    Ray r = screenRay((float)ev.motion.x, (float)ev.motion.y,
+                                      (float)win_w, (float)win_h, view, proj);
+                    glm::vec3 n = glm::normalize(cam.target - cam.position());
+                    glm::vec3 hit;
+                    if (rayPlane(r, ui.ikTarget, n, hit)) ui.ikTarget = hit;
+                } else {
+                    if (dragging_orbit) cam.orbit((float)ev.motion.xrel, (float)ev.motion.yrel);
+                    if (dragging_pan)   cam.pan  ((float)ev.motion.xrel, (float)ev.motion.yrel);
+                }
             }
             if (ev.type == SDL_MOUSEWHEEL) cam.zoom((float)ev.wheel.y);
         }
@@ -128,17 +171,22 @@ int main(int, char**) {
         float dt = std::chrono::duration<float>(t_now - t_prev).count();
         t_prev = t_now;
 
-        if (ui.useKeyframes && seq.playing) {
+        // Snap the IK target to the current tip whenever IK mode is entered,
+        // so the arm doesn't jump on the first solve.
+        if (ui.mode == Mode::IK && prev_mode != Mode::IK) {
+            ui.ikTarget = glm::vec3(arm.endEffector()[3]);
+        }
+        prev_mode = ui.mode;
+
+        if (ui.mode == Mode::Playback && seq.playing) {
             seq.advance(dt);
             arm.setAngles(seq.currentAngles());
-        } else if (ui.useKeyframes && !seq.frames.empty()) {
+        } else if (ui.mode == Mode::Playback && !seq.frames.empty()) {
             // Allow scrubbing via time slider when not playing
             arm.setAngles(seq.currentAngles());
+        } else if (ui.mode == Mode::IK) {
+            ui.ikError = solveIKPosition(arm, ui.ikTarget, ik_cfg).error;
         }
-
-        int w, h;
-        SDL_GL_GetDrawableSize(win, &w, &h);
-        float aspect = h > 0 ? (float)w / (float)h : 1.0f;
 
         glEnable(GL_MULTISAMPLE);
         renderer.beginFrame(w, h, cam.view(), cam.projection(aspect), cam.position());
@@ -164,6 +212,15 @@ int main(int, char**) {
         // End-effector
         glm::mat4 ee = arm.endEffector() * glm::scale(glm::mat4(1.0f), glm::vec3(0.055f));
         renderer.drawBox(ee, glm::vec3(0.95f, 0.95f, 0.95f));
+
+        // IK target handle: green once reached, orange while chasing.
+        if (ui.mode == Mode::IK) {
+            glm::vec3 color = (ui.ikError < 0.01f) ? glm::vec3(0.30f, 0.90f, 0.40f)
+                                                   : glm::vec3(0.95f, 0.60f, 0.20f);
+            glm::mat4 marker = glm::translate(glm::mat4(1.0f), ui.ikTarget) *
+                               glm::scale(glm::mat4(1.0f), glm::vec3(0.06f));
+            renderer.drawBox(marker, color);
+        }
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();

@@ -87,7 +87,8 @@ The resulting binary is placed at the project root: `robotsim` on Linux/macOS, `
 - `Esc` — quit
 
 **Arm Control panel**
-- **Mode**: Manual (sliders drive the arm) or Playback (keyframes drive the arm).
+- **Mode**: Manual (sliders drive the arm), IK (drag the tip and the joints solve to follow), or Playback (keyframes drive the arm).
+- **IK mode**: an orange target box appears at the end-effector. Grab it in the viewport with the left mouse button and drag — the arm chases it via damped-least-squares inverse kinematics, with the other joints moving as a consequence and joint limits respected. The drag moves the target on a camera-facing plane, so orbit the camera to push it nearer/farther. You can also type exact target coordinates in the panel. The box turns green when the tip reaches the target. Dragging a joint slider drops back to Manual.
 - **Joint sliders (J1–J7)**: drag in degrees. Joint limits are enforced.
 - **Add (snapshot current pose)**: appends a keyframe with the current joint angles.
 - **Frame list**: click a frame to select it. The selected frame can be loaded back into the sliders, overwritten from the current pose, deleted, or have its "duration to next" tweaked.

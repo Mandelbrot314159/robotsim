@@ -12,9 +12,11 @@ void drawUI(UIState& ui, Arm& arm, KeyframeSequence& seq) {
     ImGui::Begin("Arm Control");
 
     ImGui::TextUnformatted("Mode");
-    if (ImGui::RadioButton("Manual", !ui.useKeyframes)) ui.useKeyframes = false;
+    if (ImGui::RadioButton("Manual", ui.mode == Mode::Manual)) ui.mode = Mode::Manual;
     ImGui::SameLine();
-    if (ImGui::RadioButton("Playback", ui.useKeyframes)) ui.useKeyframes = true;
+    if (ImGui::RadioButton("IK", ui.mode == Mode::IK)) ui.mode = Mode::IK;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Playback", ui.mode == Mode::Playback)) ui.mode = Mode::Playback;
     ImGui::Separator();
 
     ImGui::TextUnformatted("Joints (degrees)");
@@ -30,12 +32,26 @@ void drawUI(UIState& ui, Arm& arm, KeyframeSequence& seq) {
             edited = true;
         }
     }
-    if (edited && ui.useKeyframes) {
+    if (edited && ui.mode != Mode::Manual) {
         seq.playing = false;
-        ui.useKeyframes = false;  // editing kicks us back to manual mode
+        ui.mode = Mode::Manual;  // dragging a slider kicks us back to manual mode
     }
     if (ImGui::Button("Zero all joints")) {
         for (int i = 0; i < NUM_JOINTS; ++i) arm.setAngle(i, 0.0f);
+    }
+
+    if (ui.mode == Mode::IK) {
+        ImGui::Separator();
+        ImGui::TextUnformatted("IK target");
+        ImGui::TextWrapped("Grab the orange target box in the viewport and drag "
+                           "(orbit the camera to push it in depth), or set it here:");
+        ImGui::DragFloat3("target xyz", &ui.ikTarget.x, 0.005f, -5.0f, 5.0f, "%.3f");
+        if (ImGui::Button("Reset target to tip")) {
+            ui.ikTarget = glm::vec3(arm.endEffector()[3]);
+        }
+        ImGui::SameLine();
+        ImGui::Text("reach error: %.3f m%s", ui.ikError,
+                    ui.ikError < 0.01f ? "  (reached)" : "");
     }
 
     ImGui::Separator();
@@ -96,7 +112,7 @@ void drawUI(UIState& ui, Arm& arm, KeyframeSequence& seq) {
     if (ImGui::Button(seq.playing ? "Pause" : "Play")) {
         if (seq.frames.size() >= 2) {
             seq.playing = !seq.playing;
-            ui.useKeyframes = true;
+            ui.mode = Mode::Playback;
         }
     }
     ImGui::SameLine();
@@ -109,7 +125,7 @@ void drawUI(UIState& ui, Arm& arm, KeyframeSequence& seq) {
     float t = seq.time;
     if (ImGui::SliderFloat("time", &t, 0.0f, dur > 0.0f ? dur : 1.0f, "%.2fs")) {
         seq.time = t;
-        ui.useKeyframes = true;
+        ui.mode = Mode::Playback;
     }
     ImGui::Text("Total duration: %.2fs", dur);
 
