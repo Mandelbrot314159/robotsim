@@ -11,6 +11,8 @@ struct IKConfig {
     float maxStep    = 0.06f;  // max end-effector displacement chased per iteration (world units)
     float maxAngStep = 0.10f;  // max end-effector reorientation chased per iteration (radians)
     float rotWeight  = 0.8f;   // relative importance of orientation vs position
+    float postureGain = 0.05f; // null-space pull toward joint mid-range (0 disables); keeps
+                               // joints off their limits so the arm avoids locking up straight
     float tolerance  = 1e-4f;  // stop early once within this distance of the target
 };
 

@@ -140,10 +140,32 @@ IKResult solveIKPose(Arm& arm, const glm::vec3& targetPos, const glm::quat& targ
         double y[6];
         solveLinear6(A, e, y);
 
-        // dtheta = Jt y  ->  dtheta_i = sum_a J[a][i] * y[a]. Clamped to limits.
+        // Primary task: dtheta_p = Jt y  (drives the end-effector toward the target).
+        // Secondary task projected into the null space so it does not disturb the
+        // end-effector: pull each joint gently toward the middle of its range. This
+        // keeps the elbow (and others) off their limits, so the arm doesn't get stuck
+        // in a fully-extended singular pose it can't recover from.
+        double z[NUM_JOINTS];
+        for (int i = 0; i < NUM_JOINTS; ++i) {
+            float mid = 0.5f * (arm.config(i).lower + arm.config(i).upper);
+            z[i] = -cfg.postureGain * (arm.getAngle(i) - mid);
+        }
+        // nullspace(z) = z - Jt (J Jt + lambda^2 I)^-1 (J z)
+        double Jz[6];
+        for (int a = 0; a < 6; ++a) {
+            double s = 0.0;
+            for (int i = 0; i < NUM_JOINTS; ++i) s += J[a][i] * z[i];
+            Jz[a] = s;
+        }
+        double AinvJz[6];
+        solveLinear6(A, Jz, AinvJz);
+
         for (int i = 0; i < NUM_JOINTS; ++i) {
             double dtheta = 0.0;
-            for (int a = 0; a < 6; ++a) dtheta += J[a][i] * y[a];
+            for (int a = 0; a < 6; ++a) dtheta += J[a][i] * y[a];  // primary
+            double proj = 0.0;
+            for (int a = 0; a < 6; ++a) proj += J[a][i] * AinvJz[a];
+            dtheta += z[i] - proj;  // null-space posture bias
             arm.setAngle(i, arm.getAngle(i) + (float)dtheta);
         }
     }

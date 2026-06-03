@@ -95,7 +95,9 @@ The resulting binary is placed at the project root: `robotsim` on Linux/macOS, `
   - **Rotation rings (X/Y/Z)** — rotate the tip's orientation about a world axis.
 
   Clicking empty space still orbits the camera, so you can reposition and work from any angle. You can also type exact target coordinates in the panel, reset the target/orientation to the current tip, and watch the live position/orientation error. Dragging a joint slider drops back to Manual.
-- **Joint sliders (J1–J7)**: drag in degrees. Joint limits are enforced.
+
+  The solver also applies a gentle null-space bias toward each joint's mid-range, which keeps joints off their limits and prevents the arm from locking up in a fully-extended (singular) pose it can't bend back out of. Tune or disable it via `postureGain` in [src/ik.h](src/ik.h).
+- **Joint rows**: each joint shows its name and an angle slider (degrees); limits are enforced. **Click a joint's name** to rename it in place. Expand its **"range of motion"** dropdown to edit that joint's min/max travel — widening a joint's range gives the solver more room to work.
 - **Add (snapshot current pose)**: appends a keyframe with the current joint angles.
 - **Frame list**: click a frame to select it. The selected frame can be loaded back into the sliders, overwritten from the current pose, deleted, or have its "duration to next" tweaked.
 - **Play / Pause / Stop / Loop**: standard playback controls. The time slider scrubs through the sequence; segments are eased with smoothstep.

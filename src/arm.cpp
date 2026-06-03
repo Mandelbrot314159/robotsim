@@ -1,5 +1,6 @@
 #include "arm.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <utility>
 
 namespace robotsim {
 
@@ -14,10 +15,25 @@ Arm::Arm() {
     joints_[4] = { glm::vec3(0, 0, 1), 0.05f, -3.0000f,  3.0000f };
     joints_[5] = { glm::vec3(1, 0, 0), 0.15f, -1.8000f,  1.8000f };
     joints_[6] = { glm::vec3(0, 0, 1), 0.10f, -3.0000f,  3.0000f };
+
+    names_[0] = "Base Yaw";
+    names_[1] = "Shoulder Pitch";
+    names_[2] = "Upper Arm Roll";
+    names_[3] = "Elbow Pitch";
+    names_[4] = "Forearm Roll";
+    names_[5] = "Wrist Pitch";
+    names_[6] = "Hand Roll";
 }
 
 void Arm::setAngle(int j, float r) {
     angles_[j] = glm::clamp(r, joints_[j].lower, joints_[j].upper);
+}
+
+void Arm::setLimits(int j, float lower, float upper) {
+    if (upper < lower) std::swap(lower, upper);
+    joints_[j].lower = lower;
+    joints_[j].upper = upper;
+    angles_[j] = glm::clamp(angles_[j], lower, upper);
 }
 
 void Arm::setAngles(const std::array<float, NUM_JOINTS>& a) {
