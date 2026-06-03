@@ -17,8 +17,11 @@
 #include <chrono>
 #include <iostream>
 
+#include <glm/gtc/quaternion.hpp>
+
 #include "arm.h"
 #include "camera.h"
+#include "gizmo.h"
 #include "ik.h"
 #include "keyframes.h"
 #include "picking.h"
@@ -91,13 +94,13 @@ int main(int, char**) {
     };
 
     IKConfig ik_cfg;
-    const float kTargetPickRadius = 0.10f;  // generous grab radius for the IK target handle
+    GizmoDrag gizmo;  // transform-gizmo drag state (active while a handle is held)
 
     auto t_prev = std::chrono::steady_clock::now();
     bool running = true;
     bool dragging_orbit  = false;
     bool dragging_pan    = false;
-    bool dragging_target = false;
+    bool dragging_gizmo  = false;
     Mode prev_mode = ui.mode;
 
     while (running) {
@@ -117,23 +120,25 @@ int main(int, char**) {
             if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE) running = false;
 
             if (io.WantCaptureMouse) {
-                dragging_orbit  = false;
-                dragging_pan    = false;
-                dragging_target = false;
+                dragging_orbit = false;
+                dragging_pan   = false;
+                dragging_gizmo = false;
                 continue;
             }
 
             if (ev.type == SDL_MOUSEBUTTONDOWN) {
                 if (ev.button.button == SDL_BUTTON_LEFT) {
-                    // In IK mode, a left click on the target handle grabs it;
+                    // In IK mode, a left click on a gizmo handle grabs it;
                     // otherwise the left button orbits the camera as usual.
                     bool grabbed = false;
                     if (ui.mode == Mode::IK) {
                         Ray r = screenRay((float)ev.button.x, (float)ev.button.y,
                                           (float)win_w, (float)win_h, view, proj);
-                        float t;
-                        if (raySphere(r, ui.ikTarget, kTargetPickRadius, t)) {
-                            dragging_target = true;
+                        GizmoHandle h = gizmoPick(r, ui.ikTarget, gizmoScale(cam.distance));
+                        if (h != GizmoHandle::None) {
+                            glm::vec3 fwd = glm::normalize(cam.target - cam.position());
+                            gizmoBeginDrag(gizmo, h, r, ui.ikTarget, ui.ikRot, fwd);
+                            dragging_gizmo = true;
                             grabbed = true;
                         }
                     }
@@ -144,21 +149,18 @@ int main(int, char**) {
             }
             if (ev.type == SDL_MOUSEBUTTONUP) {
                 if (ev.button.button == SDL_BUTTON_LEFT) {
-                    dragging_orbit  = false;
-                    dragging_target = false;
+                    dragging_orbit = false;
+                    dragging_gizmo = false;
+                    gizmo.active   = GizmoHandle::None;
                 }
                 if (ev.button.button == SDL_BUTTON_RIGHT)  dragging_pan = false;
                 if (ev.button.button == SDL_BUTTON_MIDDLE) dragging_pan = false;
             }
             if (ev.type == SDL_MOUSEMOTION) {
-                if (dragging_target && ui.mode == Mode::IK) {
-                    // Slide the target on a camera-facing plane through its current
-                    // position, so mouse motion maps to intuitive screen-space motion.
+                if (dragging_gizmo && ui.mode == Mode::IK) {
                     Ray r = screenRay((float)ev.motion.x, (float)ev.motion.y,
                                       (float)win_w, (float)win_h, view, proj);
-                    glm::vec3 n = glm::normalize(cam.target - cam.position());
-                    glm::vec3 hit;
-                    if (rayPlane(r, ui.ikTarget, n, hit)) ui.ikTarget = hit;
+                    gizmoDrag(gizmo, r, ui.ikTarget, ui.ikRot);
                 } else {
                     if (dragging_orbit) cam.orbit((float)ev.motion.xrel, (float)ev.motion.yrel);
                     if (dragging_pan)   cam.pan  ((float)ev.motion.xrel, (float)ev.motion.yrel);
@@ -171,10 +173,12 @@ int main(int, char**) {
         float dt = std::chrono::duration<float>(t_now - t_prev).count();
         t_prev = t_now;
 
-        // Snap the IK target to the current tip whenever IK mode is entered,
+        // Snap the IK target pose to the current tip whenever IK mode is entered,
         // so the arm doesn't jump on the first solve.
         if (ui.mode == Mode::IK && prev_mode != Mode::IK) {
-            ui.ikTarget = glm::vec3(arm.endEffector()[3]);
+            glm::mat4 ee = arm.endEffector();
+            ui.ikTarget = glm::vec3(ee[3]);
+            ui.ikRot    = glm::quat_cast(glm::mat3(ee));
         }
         prev_mode = ui.mode;
 
@@ -185,7 +189,9 @@ int main(int, char**) {
             // Allow scrubbing via time slider when not playing
             arm.setAngles(seq.currentAngles());
         } else if (ui.mode == Mode::IK) {
-            ui.ikError = solveIKPosition(arm, ui.ikTarget, ik_cfg).error;
+            IKResult res = solveIKPose(arm, ui.ikTarget, ui.ikRot, ik_cfg);
+            ui.ikError    = res.error;
+            ui.ikAngError = res.angError;
         }
 
         glEnable(GL_MULTISAMPLE);
@@ -213,13 +219,9 @@ int main(int, char**) {
         glm::mat4 ee = arm.endEffector() * glm::scale(glm::mat4(1.0f), glm::vec3(0.055f));
         renderer.drawBox(ee, glm::vec3(0.95f, 0.95f, 0.95f));
 
-        // IK target handle: green once reached, orange while chasing.
+        // IK transform gizmo on the target pose.
         if (ui.mode == Mode::IK) {
-            glm::vec3 color = (ui.ikError < 0.01f) ? glm::vec3(0.30f, 0.90f, 0.40f)
-                                                   : glm::vec3(0.95f, 0.60f, 0.20f);
-            glm::mat4 marker = glm::translate(glm::mat4(1.0f), ui.ikTarget) *
-                               glm::scale(glm::mat4(1.0f), glm::vec3(0.06f));
-            renderer.drawBox(marker, color);
+            gizmoRender(renderer, ui.ikTarget, gizmoScale(cam.distance), gizmo.active);
         }
 
         ImGui_ImplOpenGL3_NewFrame();

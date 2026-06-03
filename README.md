@@ -88,7 +88,13 @@ The resulting binary is placed at the project root: `robotsim` on Linux/macOS, `
 
 **Arm Control panel**
 - **Mode**: Manual (sliders drive the arm), IK (drag the tip and the joints solve to follow), or Playback (keyframes drive the arm).
-- **IK mode**: an orange target box appears at the end-effector. Grab it in the viewport with the left mouse button and drag — the arm chases it via damped-least-squares inverse kinematics, with the other joints moving as a consequence and joint limits respected. The drag moves the target on a camera-facing plane, so orbit the camera to push it nearer/farther. You can also type exact target coordinates in the panel. The box turns green when the tip reaches the target. Dragging a joint slider drops back to Manual.
+- **IK mode**: a world-aligned transform gizmo appears on the end-effector, and the arm solves to follow its target pose via damped-least-squares inverse kinematics (full 6-DOF: position *and* orientation), with the other joints moving as a consequence and joint limits respected. Grab a handle with the left mouse button:
+  - **Center cube** — free move on a camera-facing plane.
+  - **Axis bars (X/Y/Z)** — move constrained to one world axis.
+  - **Plane quads (XY/YZ/XZ)** — move constrained to a world plane.
+  - **Rotation rings (X/Y/Z)** — rotate the tip's orientation about a world axis.
+
+  Clicking empty space still orbits the camera, so you can reposition and work from any angle. You can also type exact target coordinates in the panel, reset the target/orientation to the current tip, and watch the live position/orientation error. Dragging a joint slider drops back to Manual.
 - **Joint sliders (J1–J7)**: drag in degrees. Joint limits are enforced.
 - **Add (snapshot current pose)**: appends a keyframe with the current joint angles.
 - **Frame list**: click a frame to select it. The selected frame can be loaded back into the sliders, overwritten from the current pose, deleted, or have its "duration to next" tweaked.

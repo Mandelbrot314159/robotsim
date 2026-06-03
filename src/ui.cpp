@@ -43,15 +43,22 @@ void drawUI(UIState& ui, Arm& arm, KeyframeSequence& seq) {
     if (ui.mode == Mode::IK) {
         ImGui::Separator();
         ImGui::TextUnformatted("IK target");
-        ImGui::TextWrapped("Grab the orange target box in the viewport and drag "
-                           "(orbit the camera to push it in depth), or set it here:");
+        ImGui::TextWrapped("Drag the gizmo on the tip: center = free move, "
+                           "axes/planes = constrained move, rings = rotate the tip. "
+                           "Orbit the camera to work from another angle.");
         ImGui::DragFloat3("target xyz", &ui.ikTarget.x, 0.005f, -5.0f, 5.0f, "%.3f");
         if (ImGui::Button("Reset target to tip")) {
-            ui.ikTarget = glm::vec3(arm.endEffector()[3]);
+            glm::mat4 ee = arm.endEffector();
+            ui.ikTarget = glm::vec3(ee[3]);
+            ui.ikRot    = glm::quat_cast(glm::mat3(ee));
         }
         ImGui::SameLine();
-        ImGui::Text("reach error: %.3f m%s", ui.ikError,
-                    ui.ikError < 0.01f ? "  (reached)" : "");
+        if (ImGui::Button("Reset orientation")) {
+            ui.ikRot = glm::quat_cast(glm::mat3(arm.endEffector()));
+        }
+        ImGui::Text("pos error: %.3f m%s   rot error: %.1f deg",
+                    ui.ikError, ui.ikError < 0.01f ? " (reached)" : "",
+                    glm::degrees(ui.ikAngError));
     }
 
     ImGui::Separator();
